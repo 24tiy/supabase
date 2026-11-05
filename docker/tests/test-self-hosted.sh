@@ -488,21 +488,40 @@ fi
 # 8. pg-meta (Studio backend)
 # ---------------------------------------------
 
+# The Caddy and nginx overrides forward only the API routes to the gateway,
+# so /pg and /api/mcp stay behind the dashboard basic auth there.
+if service_running caddy || service_running nginx; then
+    behind_proxy=true
+else
+    behind_proxy=false
+fi
+
 echo ""
 echo "--- pg-meta ---"
-check "pg-meta with service_role key" "200" \
-    "$(http_status "$BASE_URL/pg/schemas" \
-        -H "apikey: $SERVICE_ROLE_KEY")"
-check "pg-meta rejects anon key" "403" \
-    "$(http_status "$BASE_URL/pg/schemas" \
-        -H "apikey: $ANON_KEY")"
-check "pg-meta rejects no key" "401" \
-    "$(http_status "$BASE_URL/pg/schemas")"
+if [ "$behind_proxy" = true ]; then
+    check "pg-meta not exposed by the proxy" "401" \
+        "$(http_status "$BASE_URL/pg/schemas" \
+            -H "apikey: $SERVICE_ROLE_KEY")"
+else
+    check "pg-meta with service_role key" "200" \
+        "$(http_status "$BASE_URL/pg/schemas" \
+            -H "apikey: $SERVICE_ROLE_KEY")"
+    check "pg-meta rejects anon key" "403" \
+        "$(http_status "$BASE_URL/pg/schemas" \
+            -H "apikey: $ANON_KEY")"
+    check "pg-meta rejects no key" "401" \
+        "$(http_status "$BASE_URL/pg/schemas")"
+fi
 
 echo ""
 echo "--- MCP (blocked by default) ---"
-check "/api/mcp blocked" "403" \
-    "$(http_status "$BASE_URL/api/mcp")"
+if [ "$behind_proxy" = true ]; then
+    check "/api/mcp not exposed by the proxy" "401" \
+        "$(http_status "$BASE_URL/api/mcp")"
+else
+    check "/api/mcp blocked" "403" \
+        "$(http_status "$BASE_URL/api/mcp")"
+fi
 check "/mcp blocked" "403" \
     "$(http_status "$BASE_URL/mcp")"
 
